@@ -1,0 +1,82 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { registerUser } from "../../server/storage/authStore.js";
+import { readUserWorkspaceState, syncUserWorkspace, readCharacterVersions } from "../../server/storage/userDataStore.js";
+import { exportUserBackup, restoreUserBackup, inspectUserBackup } from "../../server/storage/backupStore.js";
+
+test("character versions are bounded, isolated, restorable and preserved in backups", async t => {
+  const root = await mkdtemp(join(tmpdir(), "character-versions-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const user = await registerUser("versions", "password", root);
+  const users = join(root, "users");
+  let state = await readUserWorkspaceState(user.userId, users);
+  const card = { id: "c1", name: "Original", description: "", systemPrompt: "Original", avatar: "A", temperature: 0.7, maxTokens: 100, tags: [], createdAt: "now", updatedAt: "now" };
+  async function save(value: typeof card) {
+    await syncUserWorkspace({ ...state, characters: [value] }, users);
+    state = await readUserWorkspaceState(user.userId, users);
+  }
+  assert.deepEqual(await readCharacterVersions(user.userId, "missing", users), []);
+  await assert.rejects(readCharacterVersions(user.userId, "../escape", users));
+  await save(card);
+  await save({ ...card, updatedAt: "later", favorite: true } as typeof card);
+  assert.deepEqual(await readCharacterVersions(user.userId, card.id, users), []);
+  for (let n = 1; n <= 23; n++) await save({ ...card, systemPrompt: `Prompt ${n}` });
+  const versions = await readCharacterVersions(user.userId, card.id, users);
+  assert.equal(versions.length, 20);
+  assert.equal(versions[0].systemPrompt, "Prompt 22");
+  assert.equal(versions[19].systemPrompt, "Prompt 3");
+  assert.deepEqual(await readCharacterVersions("other-user", card.id, users), []);
+  await save(versions[3]);
+  assert.equal((await readCharacterVersions(user.userId, card.id, users))[0].systemPrompt, "Prompt 23");
+  const backup = await exportUserBackup(user.userId, root);
+  assert.equal(inspectUserBackup(backup).characters, 1);
+  const restored = await restoreUserBackup(backup, "versions_copy", "password", root);
+  assert.deepEqual(await readCharacterVersions(restored.userId, card.id, users), await readCharacterVersions(user.userId, card.id, users));
+  const broken = structuredClone(backup);
+  const entry = broken.files.find(f => f.path.endsWith("/versions.json"))!;
+  entry.content = JSON.stringify({ versions: [{ ...card, id: "wrong" }] });
+  entry.sha256 = createHash("sha256").update(entry.content).digest("hex");
+  assert.throws(() => inspectUserBackup(broken));
+  const historyPath = join(users, user.userId, "characters", card.id, "versions.json");
+  const cardPath = join(users, user.userId, "characters", card.id, "card.json");
+  const previous = await readFile(cardPath, "utf8");
+  await writeFile(historyPath, "{corrupt");
+  await assert.rejects(readCharacterVersions(user.userId, card.id, users));
+  await assert.rejects(save({ ...card, name: "Must not save" }));
+  assert.equal(await readFile(cardPath, "utf8"), previous);
+  assert.equal(await readFile(historyPath, "utf8"), "{corrupt");
+});
+import { spawn } from "node:child_process";
+import { createServer } from "node:net";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+
+test("versions HTTP endpoint requires a session and only reads its owner's history", async t => {
+  const root = await mkdtemp(join(tmpdir(), "character-versions-http-"));
+  const probe = createServer();
+  await new Promise<void>(done => probe.listen(0, "127.0.0.1", done));
+  const port = (probe.address() as { port: number }).port;
+  await new Promise<void>(done => probe.close(() => done()));
+  const project = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+  const child = spawn(process.execPath, ["--import", pathToFileURL(join(project, "node_modules/tsx/dist/loader.mjs")).href, join(project, "server/index.ts")], { cwd: root, env: { ...process.env, HOST: "127.0.0.1", PORT: String(port), SERVER_TOKEN: "" }, stdio: "ignore", windowsHide: true });
+  t.after(async () => { const exited = new Promise<void>(done => child.once("exit", () => done())); child.kill(); if (child.exitCode === null) await exited; await rm(root, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${port}`;
+  for (let n = 0; n < 100; n++) { try { if ((await fetch(base + "/api/health")).ok) break; } catch {} await delay(50); }
+  const request = (path: string, method = "GET", body?: unknown, token?: string) => fetch(base + path, { method, headers: { "Content-Type": "application/json", ...(token ? { "X-Session-Token": token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  assert.equal((await request("/api/characters/c1/versions")).status, 401);
+  const auth = await (await request("/api/auth/register", "POST", { username: "versions_http", password: "password" })).json();
+  const other = await (await request("/api/auth/register", "POST", { username: "versions_other", password: "password" })).json();
+  const state = await (await request("/api/user-state", "GET", undefined, auth.sessionToken)).json();
+  const card = { id: "c1", name: "Original", description: "", systemPrompt: "Original", avatar: "A", temperature: 0.7, maxTokens: 100, tags: [], createdAt: "now", updatedAt: "now" };
+  assert.equal((await request("/api/user-state", "POST", { ...state, characters: [card] }, auth.sessionToken)).status, 200);
+  const current = await (await request("/api/user-state", "GET", undefined, auth.sessionToken)).json();
+  assert.equal((await request("/api/user-state", "POST", { ...current, characters: [{ ...card, name: "Changed" }] }, auth.sessionToken)).status, 200);
+  assert.deepEqual(await (await request("/api/characters/c1/versions", "GET", undefined, auth.sessionToken)).json(), { versions: [card] });
+  assert.deepEqual(await (await request("/api/characters/c1/versions", "GET", undefined, other.sessionToken)).json(), { versions: [] });
+  assert.equal((await request("/api/characters/bad%20id/versions", "GET", undefined, auth.sessionToken)).status, 400);
+});

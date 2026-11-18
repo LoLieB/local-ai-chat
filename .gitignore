@@ -1,0 +1,23 @@
+# Private application data, secrets and local installations
+.env
+.env.*
+!.env.example
+server-data/
+runtime/
+logs/
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
+*.sqlite*
+*.db
+*.pem
+*.key
+
+# Local packaging and backup directories
+artifacts/
+_rollback/
+backups/
+*.zip
+.agents/
+.codex/

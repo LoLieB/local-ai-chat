@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/studio/mark.svg" type="image/svg+xml"/><link rel="apple-touch-icon" href="/studio/icon-180.png"/>
+    <title>Local AI Chat</title>
+    <style>
+      #boot-status {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #121512;
+        color: #e8ece7;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        z-index: 9999;
+      }
+
+      #boot-status[hidden] {
+        display: none;
+      }
+
+      .boot-card {
+        width: min(100%, 420px);
+        padding: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        background: rgba(18, 21, 18, 0.96);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      .boot-card h1 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+
+      .boot-card p {
+        margin: 0;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot-status">
+      <section class="boot-card">
+        <h1>Local AI Chat</h1>
+        <p id="boot-status-text">Загрузка клиента...</p>
+      </section>
+    </div>
+    <div id="root"></div>
+    <script>
+      (function () {
+        var bootRoot = document.getElementById("boot-status");
+        var bootText = document.getElementById("boot-status-text");
+        var bootReady = false;
+        var lastStage = "html-ready";
+
+        function setBootMessage(message) {
+          if (bootText) {
+            bootText.textContent = message;
+          }
+          if (bootRoot) {
+            bootRoot.hidden = false;
+          }
+        }
+
+        function setBootStage(stage) {
+          lastStage = stage || lastStage;
+          if (!bootReady) {
+            setBootMessage("Загрузка клиента...\n\nЭтап: " + lastStage);
+          }
+        }
+
+        window.addEventListener("local-ai-chat:boot-stage", function (event) {
+          var stage = event && event.detail ? String(event.detail) : "unknown-stage";
+          setBootStage(stage);
+        });
+
+        window.addEventListener("local-ai-chat:boot-ready", function () {
+          bootReady = true;
+          if (bootRoot) {
+            bootRoot.hidden = true;
+          }
+        });
+
+        window.addEventListener(
+          "error",
+          function (event) {
+            if (bootReady) {
+              return;
+            }
+
+            var message = "Клиент не догрузился. Похоже, туннель дёрнулся во время загрузки страницы.";
+            if (event && event.message) {
+              message += "\n\nОшибка: " + event.message;
+            }
+            message += "\n\nПоследний этап: " + lastStage;
+            setBootMessage(message);
+          },
+          true
+        );
+
+        window.addEventListener("unhandledrejection", function (event) {
+          if (bootReady) {
+            return;
+          }
+
+          var reason = event && event.reason ? String(event.reason) : "unknown rejection";
+          setBootMessage(
+            "Клиент не смог нормально стартовать после перезагрузки.\n\nПричина: " + reason + "\n\nПоследний этап: " + lastStage
+          );
+        });
+
+        window.setTimeout(function () {
+          if (!bootReady) {
+            setBootMessage(
+              "Загрузка клиента затянулась. Скорее всего, туннель или один из JS-файлов догрузился криво.\n\nПоследний этап: " +
+                lastStage +
+                "\n\nПопробуйте обновить страницу ещё раз или переподнять только туннель."
+            );
+          }
+        }, 12000);
+      })();
+    </script>
+    <script type="module">
+      window.dispatchEvent(new CustomEvent("local-ai-chat:boot-stage", { detail: "module-import:start" }));
+      import("/src/main.tsx").catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        window.dispatchEvent(new CustomEvent("local-ai-chat:boot-stage", { detail: "module-import:failed" }));
+        window.dispatchEvent(
+          new ErrorEvent("error", {
+            message: "main.tsx import failed: " + message
+          })
+        );
+      });
+    </script>
+  </body>
+</html>
