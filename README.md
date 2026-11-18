@@ -4,7 +4,7 @@
 
 A local character chat for Windows. Choose a character, write your own, or put several characters in one room. Local AI Chat keeps the conversation and its history. A separate language model supplies the replies through LM Studio or another compatible server.
 
-**Version 0.1.0** · [Download the Windows source package](https://github.com/LoLieB/local-ai-chat/releases/download/v0.1.0/local-ai-chat-0.1.0-public.zip) · [Русский](README_RU.md) · [English PDF guide](docs/Local-AI-Chat-Guide-EN.pdf) · [Руководство в PDF](docs/Local-AI-Chat-Guide-RU.pdf)
+**Version 0.1.0** · [Download the Windows source package](https://github.com/LoLieB/local-ai-chat/archive/refs/heads/main.zip) · [Русский](README_RU.md) · [English PDF guide](docs/Local-AI-Chat-Guide-EN.pdf) · [Руководство в PDF](docs/Local-AI-Chat-Guide-RU.pdf)
 
 ![Studio Next gallery showing the six starter characters and a selected character's greeting](images/next-gallery-en.jpg)
 
@@ -21,7 +21,7 @@ A local character chat for Windows. Choose a character, write your own, or put s
 ## First conversation on Windows
 
 1. Install a compatible **Node.js LTS with npm** and **LM Studio**. Version 0.1.0 was tested on Windows x64. The Node.js range is `^20.19.0 || >=22.12.0`. Installation needs internet access for the dependencies and any model you choose to download. RAM, VRAM and storage needs depend on that model. [Node.js downloads](https://nodejs.org/en/download) · [LM Studio](https://lmstudio.ai/)
-2. Download **local-ai-chat-0.1.0-public.zip** from the release and extract the whole archive into a writable folder. Open **1_INSTALL.bat**, wait for the build, then choose your own administrator password when prompted. [Illustrated installation guide](docs/Local-AI-Chat-Guide-EN.pdf)
+2. Extract **local-ai-chat-main.zip** into a writable folder. Inside the extracted **local-ai-chat-main** folder, open **1_INSTALL.bat**, wait for the build, then choose your own administrator password when prompted. [Illustrated installation guide](docs/Local-AI-Chat-Guide-EN.pdf)
 3. In LM Studio, load your model and start its local server in **Developer**. When both programs are on the same computer, the usual base URL is `http://127.0.0.1:1234/v1`.
 4. Open **2_START.bat**. Leave the launcher window open. Sign in as `admin` in the browser at `http://127.0.0.1:8787`. In **Settings**, enter the model server URL, select its model ID, save and test the connection.
 5. Open the Studio gallery, select a character, choose **Start a chat**, then send a message. On subsequent days, start the model server and open **2_START.bat**. Press Enter in the launcher window to stop the app. [Windows quick start](README-FIRST-EN.md) · [Terminal setup](project/README.md)
